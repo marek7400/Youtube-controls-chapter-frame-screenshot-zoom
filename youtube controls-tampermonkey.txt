@@ -11,7 +11,7 @@
 (function() {
     'use strict';
 
-    // Globalne zmienne
+    // Global variables
     let currentZoom = 1;
     let panX = 0;
     let panY = 0;
@@ -28,7 +28,7 @@
     let transitionTimeout = null;
     let isTransitioning = false;
 
-    // Wstrzykujemy style CSS do strony
+    // Inject CSS styles into the page
     function addHoverStyles() {
         if (document.getElementById('custom-yt-controls-style')) return;
 
@@ -96,9 +96,9 @@
         document.head.appendChild(style);
     }
 
-    // --- System Powiadomień i Dźwięków ---
+    // --- Notification and Sound System ---
 
-    // Syntezator "System Ding"
+    // "System Ding" synthesizer
     function playSystemSound() {
         try {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -122,13 +122,13 @@
                 osc.stop(ctx.currentTime + startTime + duration);
             }
 
-			playTone(1200, 0, 0.08, 0.25);   // szybki klik
-			playTone(800, 0.05, 0.1, 0.25);  // drugi klik niższy, chwilę później 
+			playTone(1200, 0, 0.08, 0.25);   // quick click
+			playTone(800, 0.05, 0.1, 0.25);  // second click lower, a moment later 
             
         } catch (e) { console.warn("AudioContext error", e); }
     }
 
-    // Komunikat ekranowy (Toast Notification) - NA ŚRODKU, ŻÓŁTE TŁO
+    // On-screen message (Toast Notification) - CENTERED, YELLOW BACKGROUND
     function showNotification(text) {
         const player = document.querySelector('.html5-video-player');
         if (!player) return;
@@ -139,17 +139,17 @@
             notif.id = 'custom-yt-notification';
             Object.assign(notif.style, {
                 position: 'absolute',
-                top: '50%', // Idealny środek w pionie
-                left: '50%', // Idealny środek w poziomie
+                top: '50%', // Perfect vertical center
+                left: '50%', // Perfect horizontal center
                 transform: 'translate(-50%, -50%)',
-                backgroundColor: '#FFCC00', // Żółte tło
-                color: '#000000', // Czarne napisy dla kontrastu
+                backgroundColor: '#FFCC00', // Yellow background
+                color: '#000000', // Black text for contrast
                 padding: '16px 32px',
                 borderRadius: '8px',
                 fontSize: '22px',
                 fontWeight: 'bold',
                 zIndex: '999999',
-                pointerEvents: 'none', // Nie blokuje klikania myszką
+                pointerEvents: 'none', // Does not block mouse clicks
                 opacity: '0',
                 transition: 'opacity 0.3s ease-in-out',
                 boxShadow: '0 6px 20px rgba(0,0,0,0.6)',
@@ -176,13 +176,13 @@
         const player = document.querySelector('.html5-video-player');
         const isFullscreen = player && player.classList.contains('ytp-fullscreen');
         
-        // Zgodnie z wytycznymi: komunikat tylko w pełnym ekranie i gdy jest zrobiony zoom
+        // According to guidelines: notification only in fullscreen and when zoomed in
         if (isFullscreen && currentZoom > 1) {
-            showNotification('Zapisano zrzut w folderze pobrane');
+            showNotification('Screenshot saved in the downloads folder');
         }
     }
 
-    // --- Koniec Systemu Powiadomień ---
+    // --- End of Notification System ---
 
     function applyTransform(smooth = false) {
         if (reqFrame) cancelAnimationFrame(reqFrame);
@@ -334,14 +334,14 @@
     const buttonsConfig =[
         {
             id: 'btn-screenshot',
-            title: 'Zrób zrzut ekranu (lub pobierz miniaturkę na starcie)',
+            title: 'Take a screenshot (or download thumbnail at start)',
             path: 'M4 4h3l2-2h6l2 2h3c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zm8 3c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zm0 8c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3 3-1.35 3-3 3z',
             action: async () => {
                 const video = document.querySelector('video');
                 if (!video) return;
 
                 try {
-                    // Czas 0:00 - Pobieranie miniaturki z serwerów
+                    // Time 0:00 - Downloading thumbnail from servers
                     if (video.currentTime === 0) {
                         const urlParams = new URLSearchParams(window.location.search);
                         const videoId = urlParams.get('v');
@@ -359,7 +359,7 @@
                                         const blobUrl = URL.createObjectURL(blob);
                                         const a = document.createElement('a');
                                         a.href = blobUrl;
-                                        a.download = `YouTube_Miniaturka_${videoId}.jpg`;
+                                        a.download = `YouTube_Thumbnail_${videoId}.jpg`;
                                         document.body.appendChild(a);
                                         a.click();
                                         document.body.removeChild(a);
@@ -368,7 +368,7 @@
                                         break; 
                                     }
                                 } catch (e) {
-                                    console.warn('Nie udało się pobrać miniaturki.', e);
+                                    console.warn('Failed to download thumbnail.', e);
                                 }
                             }
                             if (thumbDownloaded) {
@@ -379,7 +379,7 @@
                     }
 
                     if (video.videoWidth === 0 || video.videoHeight === 0) {
-                        alert('Obraz nie został załadowany. Odtwórz film na chwilę.');
+                        alert('Image not loaded. Play the video for a moment.');
                         return;
                     }
 
@@ -419,42 +419,42 @@
 
                     const a = document.createElement('a');
                     a.href = dataUrl;
-                    a.download = `YouTube_Zrzut_${timeString}.png`;
+                    a.download = `YouTube_Screenshot_${timeString}.png`;
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
 
-                    // Sukces zrzutu - dźwięk i żółty komunikat na środku ekranu
+                    // Screenshot success - sound and yellow notification in the center of the screen
                     onScreenshotSuccess();
                     
                 } catch (err) {
-                    alert('Błąd - materiał może być chroniony DRM.');
+                    alert('Error - content may be DRM protected.');
                 }
             }
         },
         {
             id: 'btn-zoom-in',
-            title: 'Powiększ obraz (+50%)\nPrawy przycisk myszy: Reset na 100%',
+            title: 'Zoom in (+50%)\nRight click: Reset to 100%',
             path: 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z', 
             action: () => changeZoom(0.5),
             actionContext: () => resetZoom()
         },
         {
             id: 'btn-zoom-out',
-            title: 'Pomniejsz obraz (-50%)\nPrawy przycisk myszy: Reset na 100%',
+            title: 'Zoom out (-50%)\nRight click: Reset to 100%',
             path: 'M19 13H5v-2h14v2z',
             action: () => changeZoom(-0.5),
             actionContext: () => resetZoom()
         },
         {
             id: 'btn-ctrl-left',
-            title: 'Ctrl + Strzałka w lewo',
+            title: 'Ctrl + Left Arrow',
             path: 'M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z',
             action: () => { simulateKey('ArrowLeft', 37, true); }
         },
         {
             id: 'btn-comma',
-            title: 'Klatka w tył (,)',
+            title: 'Previous frame (,)',
             path: 'M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z',
             action: () => {
                 simulateKey(',', 188);
@@ -464,7 +464,7 @@
         },
         {
             id: 'btn-dot',
-            title: 'Klatka w przód (.)',
+            title: 'Next frame (.)',
             path: 'M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z',
             action: () => {
                 simulateKey('.', 190);
@@ -474,7 +474,7 @@
         },
         {
             id: 'btn-ctrl-right',
-            title: 'Ctrl + Strzałka w prawo',
+            title: 'Ctrl + Right Arrow',
             path: 'M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z',
             action: () => { simulateKey('ArrowRight', 39, true); }
         }
