@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         YouTube Custom Controls 
+// @name         YouTube Custom Controls
 // @namespace    http://tampermonkey.net/
-// @version      5.4
-// @description  
+// @version      5.5
+// @description  Custom YouTube controls with movable panel
 // @author       marek7400
 // @match        *://*.youtube.com/*
 // @grant        none
@@ -11,11 +11,11 @@
 (function() {
     'use strict';
 
-    // Global variables
+    // Globalne zmienne
     let currentZoom = 1;
     let panX = 0;
     let panY = 0;
-    
+
     let isDragging = false;
     let hasDragged = false;
     let dragStartX = 0;
@@ -28,7 +28,7 @@
     let transitionTimeout = null;
     let isTransitioning = false;
 
-    // Inject CSS styles into the page
+    // Wstrzykujemy style CSS do strony
     function addHoverStyles() {
         if (document.getElementById('custom-yt-controls-style')) return;
 
@@ -38,8 +38,8 @@
         style.textContent = `
             #custom-yt-controls {
                 position: absolute;
-                bottom: 63px;
-                right: 25px;
+                bottom: 63px; /* Domyślna pozycja */
+                right: 25px;  /* Domyślna pozycja */
                 background-color: rgba(0, 0, 0, 0.7);
                 backdrop-filter: blur(4px);
                 border-radius: 10px;
@@ -49,22 +49,30 @@
                 z-index: 50;
                 box-shadow: 0 2px 10px rgba(0,0,0,0.5);
                 align-items: center;
+                cursor: grab; /* Kursor chwytania dla całego panelu */
 
                 opacity: 0;
                 visibility: hidden;
                 pointer-events: none;
-                transition: opacity 0.25s cubic-bezier(0.0,0.0,0.2,1), visibility 0.25s, bottom 0.3s ease-out;
+                /* Usunięto transition dla 'bottom', aby przesuwanie myszką było płynne */
+                transition: opacity 0.25s cubic-bezier(0.0,0.0,0.2,1), visibility 0.25s;
+            }
+
+            #custom-yt-controls:active {
+                cursor: grabbing;
             }
 
             .html5-video-player:not(.ytp-autohide) #custom-yt-controls,
-            #custom-yt-controls:hover {
+            #custom-yt-controls:hover,
+            #custom-yt-controls.is-dragging {
                 opacity: 1 !important;
                 visibility: visible !important;
                 pointer-events: auto;
             }
 
-            .html5-video-player.ytp-fullscreen #custom-yt-controls {
-                bottom: 140px; 
+            /* Jeśli panel NIE ma nadpisanej pozycji, ułóż go wyżej w pełnym ekranie */
+            .html5-video-player.ytp-fullscreen #custom-yt-controls:not([style*="top"]) {
+                bottom: 140px;
             }
 
             .html5-video-player:has(.ytp-settings-button[aria-expanded="true"]) #custom-yt-controls {
@@ -96,9 +104,7 @@
         document.head.appendChild(style);
     }
 
-    // --- Notification and Sound System ---
-
-    // "System Ding" synthesizer
+    // --- System Powiadomień i Dźwięków ---
     function playSystemSound() {
         try {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -108,27 +114,26 @@
             function playTone(freq, startTime, duration, volume) {
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
-                osc.type = 'sine'; 
+                osc.type = 'sine';
                 osc.frequency.setValueAtTime(freq, ctx.currentTime + startTime);
-                
+
                 gain.gain.setValueAtTime(0, ctx.currentTime + startTime);
                 gain.gain.linearRampToValueAtTime(volume, ctx.currentTime + startTime + 0.02);
                 gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + startTime + duration);
-                
+
                 osc.connect(gain);
                 gain.connect(ctx.destination);
-                
+
                 osc.start(ctx.currentTime + startTime);
                 osc.stop(ctx.currentTime + startTime + duration);
             }
 
-			playTone(1200, 0, 0.08, 0.25);   // quick click
-			playTone(800, 0.05, 0.1, 0.25);  // second click lower, a moment later 
-            
+			playTone(1200, 0, 0.08, 0.25);
+			playTone(800, 0.05, 0.1, 0.25);
+
         } catch (e) { console.warn("AudioContext error", e); }
     }
 
-    // On-screen message (Toast Notification) - CENTERED, YELLOW BACKGROUND
     function showNotification(text) {
         const player = document.querySelector('.html5-video-player');
         if (!player) return;
@@ -139,17 +144,17 @@
             notif.id = 'custom-yt-notification';
             Object.assign(notif.style, {
                 position: 'absolute',
-                top: '50%', // Perfect vertical center
-                left: '50%', // Perfect horizontal center
+                top: '50%',
+                left: '50%',
                 transform: 'translate(-50%, -50%)',
-                backgroundColor: '#FFCC00', // Yellow background
-                color: '#000000', // Black text for contrast
+                backgroundColor: '#FFCC00',
+                color: '#000000',
                 padding: '16px 32px',
                 borderRadius: '8px',
                 fontSize: '22px',
                 fontWeight: 'bold',
                 zIndex: '999999',
-                pointerEvents: 'none', // Does not block mouse clicks
+                pointerEvents: 'none',
                 opacity: '0',
                 transition: 'opacity 0.3s ease-in-out',
                 boxShadow: '0 6px 20px rgba(0,0,0,0.6)',
@@ -171,22 +176,18 @@
     }
 
     function onScreenshotSuccess() {
-        playSystemSound(); 
-
+        playSystemSound();
         const player = document.querySelector('.html5-video-player');
         const isFullscreen = player && player.classList.contains('ytp-fullscreen');
-        
-        // According to guidelines: notification only in fullscreen and when zoomed in
         if (isFullscreen && currentZoom > 1) {
-            showNotification('Screenshot saved in the downloads folder');
+            showNotification('Zapisano zrzut w folderze pobrane');
         }
     }
 
-    // --- End of Notification System ---
-
+    // --- System Przesuwania Obrazu (Pan/Zoom) ---
     function applyTransform(smooth = false) {
         if (reqFrame) cancelAnimationFrame(reqFrame);
-        
+
         reqFrame = requestAnimationFrame(() => {
             reqFrame = null;
             const video = document.querySelector('video');
@@ -194,7 +195,7 @@
             if (!video || !player) return;
 
             video.style.transformOrigin = 'center center';
-            
+
             if (smooth) {
                 video.style.transition = 'transform 0.25s cubic-bezier(0.2, 0, 0.2, 1)';
                 isTransitioning = true;
@@ -235,12 +236,12 @@
     function changeZoom(amount) {
         currentZoom += amount;
         currentZoom = Math.max(0.5, currentZoom);
-        
+
         if (currentZoom <= 1) {
             panX = 0;
             panY = 0;
         }
-        applyTransform(true); 
+        applyTransform(true);
     }
 
     function initDragPanning() {
@@ -261,7 +262,7 @@
             dragStartY = e.clientY;
             initialPanX = panX;
             initialPanY = panY;
-            
+
             player.style.cursor = 'grabbing';
         }, { capture: true });
 
@@ -296,12 +297,82 @@
                 hasDragged = false;
             }
         }, { capture: true });
-        
+
         window.addEventListener('resize', () => {
             if (currentZoom > 1) applyTransform(false);
         });
     }
 
+    // --- System Przesuwania Całego Panelu z Ikonami ---
+    function initPanelDragging(panel) {
+        let isDraggingPanel = false;
+        let startX, startY, initialLeft, initialTop;
+
+        panel.addEventListener('mousedown', (e) => {
+            // Ignoruj kliknięcie, jeśli to kliknięcie w ikonę, a nie w tło panelu
+            if (e.target.closest('.custom-yt-btn')) return;
+            if (e.button !== 0) return; // Tylko lewy przycisk myszy
+
+            e.preventDefault(); // Zapobiega zaznaczaniu tekstu
+            e.stopPropagation(); // Zapobiega pauzowaniu wideo
+
+            isDraggingPanel = true;
+            panel.classList.add('is-dragging'); // Utrzymuje widoczność panelu podczas dragowania
+
+            const player = document.querySelector('.html5-video-player');
+            const playerRect = player.getBoundingClientRect();
+            const panelRect = panel.getBoundingClientRect();
+
+            startX = e.clientX;
+            startY = e.clientY;
+
+            // Pobieramy aktualną pozycję względem lewego górnego rogu playera
+            initialLeft = panelRect.left - playerRect.left;
+            initialTop = panelRect.top - playerRect.top;
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDraggingPanel) return;
+
+            const player = document.querySelector('.html5-video-player');
+            if (!player) return;
+            const playerRect = player.getBoundingClientRect();
+
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+
+            let newLeft = initialLeft + dx;
+            let newTop = initialTop + dy;
+
+            // Zabezpieczenie przed wyrzuceniem panelu poza ekran playera
+            newLeft = Math.max(0, Math.min(newLeft, playerRect.width - panel.offsetWidth));
+            newTop = Math.max(0, Math.min(newTop, playerRect.height - panel.offsetHeight));
+
+            // Zapisujemy w PROCENTACH (aby działało przy zmianie na pełny ekran)
+            const leftPercent = (newLeft / playerRect.width) * 100;
+            const topPercent = (newTop / playerRect.height) * 100;
+
+            panel.style.left = `${leftPercent}%`;
+            panel.style.top = `${topPercent}%`;
+            panel.style.right = 'auto'; // Reset domyślnych styli CSS
+            panel.style.bottom = 'auto';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isDraggingPanel) {
+                isDraggingPanel = false;
+                panel.classList.remove('is-dragging');
+
+                // Zapisujemy do LocalStorage, żeby pamiętało po odświeżeniu
+                localStorage.setItem('ytCustomControlsPosition', JSON.stringify({
+                    left: panel.style.left,
+                    top: panel.style.top
+                }));
+            }
+        });
+    }
+
+    // --- Narzędzia ---
     function simulateKey(key, keyCode, ctrlKey = false) {
         const target = document.querySelector('.html5-video-player') || document.body;
         const eventObj = {
@@ -334,14 +405,13 @@
     const buttonsConfig =[
         {
             id: 'btn-screenshot',
-            title: 'Take a screenshot (or download thumbnail at start)',
+            title: 'Zrób zrzut ekranu (lub pobierz miniaturkę na starcie)',
             path: 'M4 4h3l2-2h6l2 2h3c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zm8 3c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zm0 8c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3 3-1.35 3-3 3z',
             action: async () => {
                 const video = document.querySelector('video');
                 if (!video) return;
 
                 try {
-                    // Time 0:00 - Downloading thumbnail from servers
                     if (video.currentTime === 0) {
                         const urlParams = new URLSearchParams(window.location.search);
                         const videoId = urlParams.get('v');
@@ -359,16 +429,16 @@
                                         const blobUrl = URL.createObjectURL(blob);
                                         const a = document.createElement('a');
                                         a.href = blobUrl;
-                                        a.download = `YouTube_Thumbnail_${videoId}.jpg`;
+                                        a.download = `YouTube_Miniaturka_${videoId}.jpg`;
                                         document.body.appendChild(a);
                                         a.click();
                                         document.body.removeChild(a);
                                         URL.revokeObjectURL(blobUrl);
                                         thumbDownloaded = true;
-                                        break; 
+                                        break;
                                     }
                                 } catch (e) {
-                                    console.warn('Failed to download thumbnail.', e);
+                                    console.warn('Nie udało się pobrać miniaturki.', e);
                                 }
                             }
                             if (thumbDownloaded) {
@@ -379,7 +449,7 @@
                     }
 
                     if (video.videoWidth === 0 || video.videoHeight === 0) {
-                        alert('Image not loaded. Play the video for a moment.');
+                        alert('Obraz nie został załadowany. Odtwórz film na chwilę.');
                         return;
                     }
 
@@ -387,7 +457,7 @@
                     canvas.width = video.videoWidth;
                     canvas.height = video.videoHeight;
                     const ctx = canvas.getContext('2d');
-                    
+
                     ctx.fillStyle = '#000000';
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -419,42 +489,41 @@
 
                     const a = document.createElement('a');
                     a.href = dataUrl;
-                    a.download = `YouTube_Screenshot_${timeString}.png`;
+                    a.download = `YouTube_Zrzut_${timeString}.png`;
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
 
-                    // Screenshot success - sound and yellow notification in the center of the screen
                     onScreenshotSuccess();
-                    
+
                 } catch (err) {
-                    alert('Error - content may be DRM protected.');
+                    alert('Błąd - materiał może być chroniony DRM.');
                 }
             }
         },
         {
             id: 'btn-zoom-in',
-            title: 'Zoom in (+50%)\nRight click: Reset to 100%',
-            path: 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z', 
+            title: 'Powiększ obraz (+50%)\nPrawy przycisk myszy: Reset na 100%',
+            path: 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z',
             action: () => changeZoom(0.5),
             actionContext: () => resetZoom()
         },
         {
             id: 'btn-zoom-out',
-            title: 'Zoom out (-50%)\nRight click: Reset to 100%',
+            title: 'Pomniejsz obraz (-50%)\nPrawy przycisk myszy: Reset na 100%',
             path: 'M19 13H5v-2h14v2z',
             action: () => changeZoom(-0.5),
             actionContext: () => resetZoom()
         },
         {
             id: 'btn-ctrl-left',
-            title: 'Ctrl + Left Arrow',
+            title: 'Ctrl + Strzałka w lewo',
             path: 'M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z',
             action: () => { simulateKey('ArrowLeft', 37, true); }
         },
         {
             id: 'btn-comma',
-            title: 'Previous frame (,)',
+            title: 'Klatka w tył (,)',
             path: 'M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z',
             action: () => {
                 simulateKey(',', 188);
@@ -464,7 +533,7 @@
         },
         {
             id: 'btn-dot',
-            title: 'Next frame (.)',
+            title: 'Klatka w przód (.)',
             path: 'M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z',
             action: () => {
                 simulateKey('.', 190);
@@ -474,7 +543,7 @@
         },
         {
             id: 'btn-ctrl-right',
-            title: 'Ctrl + Right Arrow',
+            title: 'Ctrl + Strzałka w prawo',
             path: 'M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z',
             action: () => { simulateKey('ArrowRight', 39, true); }
         }
@@ -493,6 +562,22 @@
 
         const container = document.createElement('div');
         container.id = 'custom-yt-controls';
+
+        // Wczytywanie zapisanej pozycji z LocalStorage
+        try {
+            const savedPos = localStorage.getItem('ytCustomControlsPosition');
+            if (savedPos) {
+                const pos = JSON.parse(savedPos);
+                if (pos.left && pos.top) {
+                    container.style.left = pos.left;
+                    container.style.top = pos.top;
+                    container.style.right = 'auto';
+                    container.style.bottom = 'auto';
+                }
+            }
+        } catch (e) {
+            console.warn('Nie udało się wczytać pozycji panelu', e);
+        }
 
         buttonsConfig.forEach(config => {
             const btn = document.createElement('button');
@@ -521,6 +606,9 @@
         });
 
         player.appendChild(container);
+
+        // Aktywuj system przesuwania dla nowo utworzonego panelu
+        initPanelDragging(container);
     }
 
     setInterval(checkAndCreateUI, 1000);
