@@ -1,5 +1,7 @@
 # Youtube-controls-chapter-frame-screenshot-zoom (Tampermonkey script)
 
+v5.5 Added: the ability to grab and move the entire icon panel + position memory 
+
 Add icons Frame Forward, Frame Backward, Chapter Forward, Chapter Backward, Movie frame screenshot and Movie thumbnail screenshot, zoom
 
 You can zoom in on the screen and take screenshots of the zoomed-in view.
