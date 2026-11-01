@@ -13,6 +13,7 @@ You can move the zoomed-in view by dragging it with the left mouse button.
 Click the + icon with the right mouse button to reset the zoom.
 
 For Chrome set Y position      bottom: 65px; /* Domyślna pozycja */ (line 41)
+
 For Firefox/Opera              bottom: 0px; /* Domyślna pozycja */
 
 ![icon](youtube-controls.png)
