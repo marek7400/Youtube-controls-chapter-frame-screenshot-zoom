@@ -12,6 +12,5 @@ Click the + icon with the right mouse button to reset the zoom.
 
 ![icon](youtube-controls.png)
 
-code:
-https://pastebin.com/htF8b607
+
 
